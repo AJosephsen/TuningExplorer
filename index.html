@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Player</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .main-wrapper {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            width: 100%;
+            align-items: flex-start;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            flex: 1;
+        }
+        .visualizer-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            width: 400px;
+        }
+        canvas {
+            width: 100%;
+            height: 150px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            background: #000;
+            margin-bottom: 15px;
+        }
+        .freq-display {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            min-height: 80px;
+            font-family: monospace;
+        }
+        .freq-item {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            margin: 5px;
+            border-radius: 5px;
+            font-size: 13px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .interval-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .interval-btn {
+            background: #f0f0f0;
+            color: #333;
+            padding: 10px;
+            font-size: 14px;
+            border: 2px solid #ddd;
+        }
+        .interval-btn:hover {
+            background: #e0e0e0;
+            border-color: #667eea;
+        }
+        .tuning-section {
+            margin: 25px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .keyboard {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .key {
+            background: white;
+            border: 2px solid #333;
+            padding: 20px 10px;
+            min-width: 50px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.1s;
+        }
+        .key:hover {
+            background: #e8e8e8;
+        }
+        .key:active, .key.active {
+            background: #667eea;
+            color: white;
+            transform: translateY(2px);
+        }
+        .key-label {
+            display: block;
+            font-size: 10px;
+            color: #666;
+            margin-top: 5px;
+        }
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            background: white;
+        }
+        table {
+            margin: 15px auto;
+            border-collapse: collapse;
+            font-size: 12px;
+            max-width: 100%;
+        }
+        th, td {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+    <div class="container">
+        <h1>🎹 Tuning Explorer</h1>
+        
+        <div class="tuning-section">
+            <label for="tuning"><strong>Select Tuning System:</strong></label>
+            <select id="tuning" onchange="updateFrequencyTable()">
+                <option value="equal">12-TET (Equal Temperament)</option>
+                <option value="just">Just Intonation</option>
+                <option value="pythagorean">Pythagorean</option>
+                <option value="quarter-comma">Quarter-Comma Meantone</option>
+            </select>
+            
+            <div style="margin-top: 15px;">
+                <label for="instrument"><strong>Instrument/Timbre:</strong></label>
+                <select id="instrument" onchange="updateInstrument()">
+                    <option value="sine">Pure Sine (Flute-like)</option>
+                    <option value="triangle">Triangle Wave (Soft)</option>
+                    <option value="square">Square Wave (Clarinet-like)</option>
+                    <option value="sawtooth">Sawtooth (Bright Brass)</option>
+                    <option value="organ">Organ (Rich Harmonics)</option>
+                    <option value="pluck">Plucked String</option>
+                    <option value="bell">Bell</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="keyboard" id="keyboard"></div>
+
+        <div style="margin: 20px 0; padding: 15px; background: #fff3cd; border-radius: 8px; border: 2px solid #ffc107;">
+            <h3 style="margin: 0 0 10px 0; color: #856404;">⚠️ Problematic Intervals</h3>
+            <p style="font-size: 13px; color: #856404; margin-bottom: 10px;">These demonstrate the weaknesses in each tuning system</p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <button onclick="playInterval(8, 3)" style="background: #ff6b6b; font-size: 13px; padding: 10px 15px;">
+                    Wolf 5th<br><small>(G# → Eb) Meantone</small>
+                </button>
+                <button onclick="playInterval(1, 5)" style="background: #ffa500; font-size: 13px; padding: 10px 15px;">
+                    Wolf 5th<br><small>(C# → G#) Pythagorean</small>
+                </button>
+                <button onclick="playInterval(0, 4)" style="background: #ffb347; font-size: 13px; padding: 10px 15px;">
+                    Major 3rd<br><small>(C → E) 12-TET</small>
+                </button>
+                <button onclick="playInterval(0, 8)" style="background: #ff8c94; font-size: 13px; padding: 10px 15px;">
+                    Tritone<br><small>(C → G#) All Systems</small>
+                </button>
+                <button onclick="playInterval(2, 9)" style="background: #ffa07a; font-size: 13px; padding: 10px 15px;">
+                    Pythagorean 3rd<br><small>(D → A) Very Sharp</small>
+                </button>
+            </div>
+        </div>
+
+        <div id="freqTable"></div>
+
+        <div style="margin: 20px 0;">
+            <label for="ratio">Interval Ratio:</label>
+            <input type="text" id="ratio" value="3:2" style="padding: 8px; font-size: 16px; width: 150px; border: 2px solid #667eea; border-radius: 5px;">
+        </div>
+        <div class="interval-buttons">
+            <button class="interval-btn" onclick="setRatio('1:1')">Unison<br>1:1</button>
+            <button class="interval-btn" onclick="setRatio('9:8')">Major 2nd<br>9:8</button>
+            <button class="interval-btn" onclick="setRatio('6:5')">Minor 3rd<br>6:5</button>
+            <button class="interval-btn" onclick="setRatio('5:4')">Major 3rd<br>5:4</button>
+            <button class="interval-btn" onclick="setRatio('4:3')">Perfect 4th<br>4:3</button>
+            <button class="interval-btn" onclick="setRatio('7:5')">Tritone<br>7:5</button>
+            <button class="interval-btn" onclick="setRatio('3:2')">Perfect 5th<br>3:2</button>
+            <button class="interval-btn" onclick="setRatio('8:5')">Minor 6th<br>8:5</button>
+            <button class="interval-btn" onclick="setRatio('5:3')">Major 6th<br>5:3</button>
+            <button class="interval-btn" onclick="setRatio('16:9')">Minor 7th<br>16:9</button>
+            <button class="interval-btn" onclick="setRatio('15:8')">Major 7th<br>15:8</button>
+            <button class="interval-btn" onclick="setRatio('2:1')">Octave<br>2:1</button>
+        </div>
+        <button onclick="playSound()">Play Interval</button>
+    </div>
+
+    <div class="visualizer-panel">
+        <h2 style="margin-top: 0;">📊 Visualizer</h2>
+        
+        <h3 style="font-size: 14px; margin-bottom: 5px;">Oscilloscope</h3>
+        <canvas id="oscilloscope" width="800" height="300"></canvas>
+        
+        <h3 style="font-size: 14px; margin-bottom: 5px;">FFT Spectrum</h3>
+        <canvas id="spectrum" width="800" height="300"></canvas>
+        
+        <h3 style="font-size: 14px; margin-bottom: 5px;">Current Frequencies</h3>
+        <div class="freq-display" id="freqDisplay">
+            <em style="color: #999;">No notes playing</em>
+        </div>
+    </div>
+    </div>
+
+    <script>
+        const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const keys = ['A', 'W', 'S', 'E', 'D', 'F', 'T', 'G', 'Y', 'H', 'U', 'J'];
+        
+        const tunings = {
+            equal: {
+                name: '12-TET',
+                // A4 = 440 Hz, equal temperament
+                ratios: [1, 2**(1/12), 2**(2/12), 2**(3/12), 2**(4/12), 2**(5/12), 
+                         2**(6/12), 2**(7/12), 2**(8/12), 2**(9/12), 2**(10/12), 2**(11/12)]
+            },
+            just: {
+                name: 'Just Intonation',
+                ratios: [1, 16/15, 9/8, 6/5, 5/4, 4/3, 45/32, 3/2, 8/5, 5/3, 9/5, 15/8]
+            },
+            pythagorean: {
+                name: 'Pythagorean',
+                ratios: [1, 256/243, 9/8, 32/27, 81/64, 4/3, 729/512, 3/2, 128/81, 27/16, 16/9, 243/128]
+            },
+            'quarter-comma': {
+                name: 'Quarter-Comma Meantone',
+                ratios: [1, 1.070, 1.118, 1.196, 1.250, 1.337, 1.397, 1.495, 1.600, 1.671, 1.788, 1.869]
+            }
+        };
+
+        let activeOscillators = new Map();
+        let audioContext;
+        let currentInstrument = 'sine';
+        let analyser;
+        let animationId;
+        let currentFrequencies = new Map();
+
+        const instruments = {
+            sine: { wave: 'sine', attack: 0.01, decay: 0.1, sustain: 0.3, release: 0.1 },
+            triangle: { wave: 'triangle', attack: 0.01, decay: 0.1, sustain: 0.3, release: 0.1 },
+            square: { wave: 'square', attack: 0.01, decay: 0.1, sustain: 0.25, release: 0.1 },
+            sawtooth: { wave: 'sawtooth', attack: 0.01, decay: 0.15, sustain: 0.3, release: 0.15 },
+            organ: { wave: 'custom', attack: 0.05, decay: 0.0, sustain: 0.3, release: 0.2 },
+            pluck: { wave: 'triangle', attack: 0.001, decay: 0.3, sustain: 0.0, release: 0.5 },
+            bell: { wave: 'custom-bell', attack: 0.001, decay: 0.8, sustain: 0.0, release: 1.2 }
+        };
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Create analyser node
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.connect(audioContext.destination);
+                
+                // Start visualization
+                startVisualization();
+            }
+        }
+
+        function updateFrequencyDisplay() {
+            const freqDisplay = document.getElementById('freqDisplay');
+            if (currentFrequencies.size === 0) {
+                freqDisplay.innerHTML = '<em style="color: #999;">No notes playing</em>';
+            } else {
+                let html = '';
+                currentFrequencies.forEach((freq, noteIndex) => {
+                    html += `<span class="freq-item">${notes[noteIndex]}: ${freq.toFixed(2)} Hz</span>`;
+                });
+                freqDisplay.innerHTML = html;
+            }
+        }
+
+        function startVisualization() {
+            const scopeCanvas = document.getElementById('oscilloscope');
+            const spectrumCanvas = document.getElementById('spectrum');
+            const scopeCtx = scopeCanvas.getContext('2d');
+            const spectrumCtx = spectrumCanvas.getContext('2d');
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            const freqArray = new Uint8Array(bufferLength);
+            
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                
+                // Get time domain data for oscilloscope
+                analyser.getByteTimeDomainData(dataArray);
+                
+                // Draw oscilloscope
+                scopeCtx.fillStyle = '#000';
+                scopeCtx.fillRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+                scopeCtx.lineWidth = 2;
+                scopeCtx.strokeStyle = '#0f0';
+                scopeCtx.beginPath();
+                
+                const sliceWidth = scopeCanvas.width / bufferLength;
+                let x = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = v * scopeCanvas.height / 2;
+                    
+                    if (i === 0) {
+                        scopeCtx.moveTo(x, y);
+                    } else {
+                        scopeCtx.lineTo(x, y);
+                    }
+                    
+                    x += sliceWidth;
+                }
+                
+                scopeCtx.lineTo(scopeCanvas.width, scopeCanvas.height / 2);
+                scopeCtx.stroke();
+                
+                // Get frequency data for spectrum
+                analyser.getByteFrequencyData(freqArray);
+                
+                // Draw spectrum
+                spectrumCtx.fillStyle = '#000';
+                spectrumCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+                
+                const barWidth = (spectrumCanvas.width / bufferLength) * 2.5;
+                let barX = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = (freqArray[i] / 255) * spectrumCanvas.height;
+                    
+                    const hue = (i / bufferLength) * 240; // Blue to red
+                    spectrumCtx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                    spectrumCtx.fillRect(barX, spectrumCanvas.height - barHeight, barWidth, barHeight);
+                    
+                    barX += barWidth + 1;
+                }
+            }
+            
+            draw();
+        }
+
+        function updateInstrument() {
+            currentInstrument = document.getElementById('instrument').value;
+        }
+
+        function getCurrentTuning() {
+            return tunings[document.getElementById('tuning').value];
+        }
+
+        function getFrequency(noteIndex) {
+            const tuning = getCurrentTuning();
+            const baseC = 261.63; // C4
+            return baseC * tuning.ratios[noteIndex];
+        }
+
+        function createInstrumentOscillator(freq) {
+            const inst = instruments[currentInstrument];
+            const now = audioContext.currentTime;
+            
+            if (inst.wave === 'custom') {
+                // Organ: multiple oscillators for rich harmonics
+                const oscillators = [];
+                const gains = [];
+                const harmonics = [1, 2, 3, 4]; // Fundamental + 3 harmonics
+                const volumes = [0.3, 0.15, 0.1, 0.05];
+                
+                harmonics.forEach((harmonic, i) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.frequency.setValueAtTime(freq * harmonic, now);
+                    osc.type = i === 0 ? 'sine' : 'triangle';
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(volumes[i], now + inst.attack);
+                    osc.connect(gain);
+                    oscillators.push(osc);
+                    gains.push(gain);
+                });
+                
+                return { oscillators, gains, inst };
+            } else if (inst.wave === 'custom-bell') {
+                // Bell: multiple inharmonic partials
+                const oscillators = [];
+                const gains = [];
+                const partials = [1, 2.4, 3.8, 5.2]; // Inharmonic ratios
+                const volumes = [0.25, 0.15, 0.1, 0.05];
+                
+                partials.forEach((partial, i) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.frequency.setValueAtTime(freq * partial, now);
+                    osc.type = 'sine';
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(volumes[i], now + inst.attack);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + inst.decay);
+                    osc.connect(gain);
+                    oscillators.push(osc);
+                    gains.push(gain);
+                });
+                
+                return { oscillators, gains, inst };
+            } else {
+                // Standard oscillator
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                osc.type = inst.wave;
+                osc.frequency.setValueAtTime(freq, now);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(inst.sustain, now + inst.attack);
+                
+                osc.connect(gain);
+                return { oscillators: [osc], gains: [gain], inst };
+            }
+        }
+
+        function playNote(noteIndex) {
+            initAudioContext();
+            
+            const freq = getFrequency(noteIndex);
+            const { oscillators, gains, inst } = createInstrumentOscillator(freq);
+            
+            oscillators.forEach(osc => {
+                gains.forEach(gain => gain.connect(analyser));
+                osc.start();
+            });
+            
+            activeOscillators.set(noteIndex, { oscillators, gains, inst });
+            currentFrequencies.set(noteIndex, freq);
+            updateFrequencyDisplay();
+            
+            // Visual feedback
+            const keyElement = document.querySelector(`[data-note="${noteIndex}"]`);
+            if (keyElement) keyElement.classList.add('active');
+        }
+
+        function stopNote(noteIndex) {
+            const data = activeOscillators.get(noteIndex);
+            if (data) {
+                const now = audioContext.currentTime;
+                const releaseTime = data.inst.release || 0.1;
+                
+                data.gains.forEach(gain => {
+                    gain.gain.cancelScheduledValues(now);
+                    gain.gain.setValueAtTime(gain.gain.value, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + releaseTime);
+                });
+                
+                data.oscillators.forEach(osc => {
+                    osc.stop(now + releaseTime);
+                });
+                
+                activeOscillators.delete(noteIndex);
+                currentFrequencies.delete(noteIndex);
+                updateFrequencyDisplay();
+            }
+            
+            // Remove visual feedback
+            const keyElement = document.querySelector(`[data-note="${noteIndex}"]`);
+            if (keyElement) keyElement.classList.remove('active');
+        }
+
+        function playInterval(note1Index, note2Index) {
+            initAudioContext();
+            
+            const freq1 = getFrequency(note1Index);
+            const freq2 = getFrequency(note2Index);
+            
+            const { oscillators: oscs1, gains: gains1 } = createInstrumentOscillator(freq1);
+            const { oscillators: oscs2, gains: gains2 } = createInstrumentOscillator(freq2);
+            
+            [...gains1, ...gains2].forEach(gain => {
+                gain.connect(analyser);
+            });
+            
+            [...oscs1, ...oscs2].forEach(osc => {
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 2);
+            });
+            
+            // Update frequency display temporarily
+            currentFrequencies.set(note1Index, freq1);
+            currentFrequencies.set(note2Index, freq2);
+            updateFrequencyDisplay();
+            
+            setTimeout(() => {
+                currentFrequencies.delete(note1Index);
+                currentFrequencies.delete(note2Index);
+                updateFrequencyDisplay();
+            }, 2000);
+            
+            // Visual feedback on keyboard
+            [note1Index, note2Index].forEach(idx => {
+                const keyElement = document.querySelector(`[data-note="${idx}"]`);
+                if (keyElement) {
+                    keyElement.classList.add('active');
+                    setTimeout(() => keyElement.classList.remove('active'), 2000);
+                }
+            });
+        }
+
+        function updateFrequencyTable() {
+            const tuning = getCurrentTuning();
+            let html = '<table><tr><th>Note</th><th>Ratio</th><th>Frequency (Hz)</th><th>Cents</th></tr>';
+            
+            for (let i = 0; i < 12; i++) {
+                const freq = getFrequency(i).toFixed(2);
+                const ratio = tuning.ratios[i];
+                const cents = (1200 * Math.log2(ratio)).toFixed(1);
+                const ratioStr = typeof ratio === 'number' && ratio < 10 ? ratio.toFixed(4) : ratio;
+                html += `<tr><td><strong>${notes[i]}</strong></td><td>${ratioStr}</td><td>${freq}</td><td>${cents}</td></tr>`;
+            }
+            
+            html += '</table>';
+            document.getElementById('freqTable').innerHTML = html;
+        }
+
+        function initKeyboard() {
+            const keyboard = document.getElementById('keyboard');
+            keyboard.innerHTML = '';
+            
+            for (let i = 0; i < 12; i++) {
+                const key = document.createElement('div');
+                key.className = 'key';
+                key.dataset.note = i;
+                key.innerHTML = `${notes[i]}<span class="key-label">${keys[i]}</span>`;
+                
+                key.addEventListener('mousedown', () => playNote(i));
+                key.addEventListener('mouseup', () => stopNote(i));
+                key.addEventListener('mouseleave', () => stopNote(i));
+                
+                keyboard.appendChild(key);
+            }
+        }
+
+        // Keyboard event handlers
+        const keyPressed = new Set();
+        
+        document.addEventListener('keydown', (e) => {
+            const keyIndex = keys.indexOf(e.key.toUpperCase());
+            if (keyIndex !== -1 && !keyPressed.has(keyIndex)) {
+                keyPressed.add(keyIndex);
+                playNote(keyIndex);
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            const keyIndex = keys.indexOf(e.key.toUpperCase());
+            if (keyIndex !== -1) {
+                keyPressed.delete(keyIndex);
+                stopNote(keyIndex);
+            }
+        });
+
+        function setRatio(ratio) {
+            document.getElementById('ratio').value = ratio;
+        }
+
+        function parseRatio(input) {
+            if (input.includes(':')) {
+                const [num, den] = input.split(':').map(parseFloat);
+                return num / den;
+            }
+            return parseFloat(input);
+        }
+
+        function playSound() {
+            const ratioInput = document.getElementById('ratio').value;
+            const ratio = parseRatio(ratioInput) || 1.5;
+            
+            initAudioContext();
+            const baseFreq = 440;
+            
+            const { oscillators: oscs1, gains: gains1 } = createInstrumentOscillator(baseFreq);
+            const { oscillators: oscs2, gains: gains2 } = createInstrumentOscillator(baseFreq * ratio);
+            
+            [...gains1, ...gains2].forEach(gain => {
+                gain.connect(analyser);
+            });
+            
+            [...oscs1, ...oscs2].forEach(osc => {
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 1.5);
+            });
+            
+            // Update frequency display temporarily
+            const freqDisplay = document.getElementById('freqDisplay');
+            freqDisplay.innerHTML = `
+                <span class="freq-item">Base: ${baseFreq.toFixed(2)} Hz</span>
+                <span class="freq-item">Interval: ${(baseFreq * ratio).toFixed(2)} Hz</span>
+                <span class="freq-item" style="background: #999;">Ratio: ${ratio.toFixed(4)}</span>
+            `;
+            
+            setTimeout(() => {
+                if (currentFrequencies.size === 0) {
+                    freqDisplay.innerHTML = '<em style="color: #999;">No notes playing</em>';
+                }
+            }, 1500);
+        }
+
+        // Initialize on load
+        initKeyboard();
+        updateFrequencyTable();
+    </script>
+</body>
+</html>

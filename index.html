@@ -202,19 +202,19 @@
             <h3 style="margin: 0 0 10px 0; color: #856404;">⚠️ Problematic Intervals</h3>
             <p style="font-size: 13px; color: #856404; margin-bottom: 10px;">These demonstrate the weaknesses in each tuning system</p>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                <button onclick="playInterval(8, 15)" style="background: #ff6b6b; font-size: 13px; padding: 10px 15px;">
+                <button onclick="playInterval(8, 15, 'quarter-comma')" style="background: #ff6b6b; font-size: 13px; padding: 10px 15px;">
                     Wolf 5th<br><small>(G# → Eb) Meantone ~738¢</small>
                 </button>
-                <button onclick="playInterval(3, 8)" style="background: #ff4444; font-size: 13px; padding: 10px 15px;">
+                <button onclick="playInterval(3, 8, 'quarter-comma')" style="background: #ff4444; font-size: 13px; padding: 10px 15px;">
                     Wolf dim6<br><small>(Eb → G#) Meantone ~462¢</small>
                 </button>
-                <button onclick="playInterval(1, 8)" style="background: #ffa500; font-size: 13px; padding: 10px 15px;">
+                <button onclick="playInterval(1, 8, 'pythagorean')" style="background: #ffa500; font-size: 13px; padding: 10px 15px;">
                     Wolf 5th<br><small>(C# → G#) Pythagorean</small>
                 </button>
-                <button onclick="playInterval(0, 4)" style="background: #ffb347; font-size: 13px; padding: 10px 15px;">
+                <button onclick="playInterval(0, 4, 'equal')" style="background: #ffb347; font-size: 13px; padding: 10px 15px;">
                     Major 3rd<br><small>(C → E) 12-TET vs Pure</small>
                 </button>
-                <button onclick="playInterval(2, 6)" style="background: #ffa07a; font-size: 13px; padding: 10px 15px;">
+                <button onclick="playInterval(2, 6, 'pythagorean')" style="background: #ffa07a; font-size: 13px; padding: 10px 15px;">
                     Pythagorean 3rd<br><small>(D → F#) Very Sharp ~408¢</small>
                 </button>
             </div>
@@ -320,6 +320,12 @@
         let currentFrequencies = new Map();
         let melodyMode = false;
         let currentMelody = null;
+
+        // Frequency map: cache frequencies for current tuning
+        // Maps note index (-24 to +48) to frequency in Hz
+        let frequencyMap = new Map();
+        const BASE_C4 = 261.63; // Hz
+        const NOTE_RANGE = { min: -24, max: 48 }; // 6 octaves range
 
         // Twinkle Twinkle Little Star melody (scale degrees, 0-11)
         const twinkleMelody = [
@@ -672,6 +678,13 @@
                     osc.connect(gain);
                     osc.start();
                     
+                    // Calculate note in 12-key range for visual display
+                    const noteInRange = ((transposedNote % 12) + 12) % 12;
+                    
+                    // Update frequency display
+                    currentFrequencies.set(noteInRange + 100, freq); // Use offset to track bass separately
+                    updateFrequencyDisplay();
+                    
                     // Stop bass note with quick release
                     const stopTimeout = setTimeout(() => {
                         if (!currentMelody) return; // Melody was stopped
@@ -685,6 +698,10 @@
                         } catch (e) {
                             // Ignore if already stopped
                         }
+                        
+                        // Remove from frequency display
+                        currentFrequencies.delete(noteInRange + 100);
+                        updateFrequencyDisplay();
                     }, step.duration * 1000);
                     
                     timeouts.push(stopTimeout);
@@ -706,15 +723,132 @@
             return tunings[document.getElementById('tuning').value];
         }
 
-        function getFrequency(noteIndex) {
+        // Build frequency map for current tuning
+        function buildFrequencyMap() {
+            frequencyMap.clear();
             const tuning = getCurrentTuning();
-            const baseC = 261.63; // C4
             
-            // Handle notes beyond the 12-key range by extending into higher/lower octaves
+            for (let noteIndex = NOTE_RANGE.min; noteIndex <= NOTE_RANGE.max; noteIndex++) {
+                const octaves = Math.floor(noteIndex / 12);
+                const noteInOctave = ((noteIndex % 12) + 12) % 12;
+                const frequency = BASE_C4 * tuning.ratios[noteInOctave] * Math.pow(2, octaves);
+                frequencyMap.set(noteIndex, frequency);
+            }
+            
+            // Validate tuning after building map
+            validateTuning();
+        }
+
+        // Validate tuning by checking known interval ratios
+        function validateTuning() {
+            const tuning = getCurrentTuning();
+            const tuningName = tuning.name;
+            const errors = [];
+            
+            // Helper to get ratio between two notes in same octave
+            const getRatio = (note1, note2) => {
+                const freq1 = frequencyMap.get(note1);
+                const freq2 = frequencyMap.get(note2);
+                return freq2 / freq1;
+            };
+            
+            // Helper to get cents from ratio
+            const getCents = (ratio) => 1200 * Math.log2(ratio);
+            
+            // Test octave (should be exactly 2:1 in all tunings)
+            const octaveRatio = getRatio(0, 12);
+            if (Math.abs(octaveRatio - 2.0) > 0.001) {
+                errors.push(`Octave ratio error: ${octaveRatio.toFixed(6)} (expected 2.0)`);
+            }
+            
+            // Tuning-specific validations
+            if (tuningName === '12-TET') {
+                // All semitones should be equal in 12-TET
+                const semitone = Math.pow(2, 1/12);
+                for (let i = 0; i < 12; i++) {
+                    const ratio = getRatio(i, i + 1);
+                    if (Math.abs(ratio - semitone) > 0.0001) {
+                        errors.push(`12-TET semitone ${notes[i]}-${notes[(i+1)%12]} error: ${ratio.toFixed(6)}`);
+                    }
+                }
+                
+                // Perfect fifth should be 700 cents
+                const fifthCents = getCents(getRatio(0, 7)); // C to G
+                if (Math.abs(fifthCents - 700) > 0.1) {
+                    errors.push(`12-TET fifth error: ${fifthCents.toFixed(1)}¢ (expected 700¢)`);
+                }
+            }
+            
+            if (tuningName === 'Just Intonation') {
+                // Perfect fifth C-G should be 3:2
+                const fifthRatio = getRatio(0, 7);
+                if (Math.abs(fifthRatio - 3/2) > 0.001) {
+                    errors.push(`Just fifth C-G error: ${fifthRatio.toFixed(6)} (expected ${(3/2).toFixed(6)})`);
+                }
+                
+                // Major third C-E should be 5:4
+                const majorThirdRatio = getRatio(0, 4);
+                if (Math.abs(majorThirdRatio - 5/4) > 0.001) {
+                    errors.push(`Just major third C-E error: ${majorThirdRatio.toFixed(6)} (expected ${(5/4).toFixed(6)})`);
+                }
+                
+                // Minor third E-G should be 6:5
+                const minorThirdRatio = getRatio(4, 7);
+                if (Math.abs(minorThirdRatio - 6/5) > 0.001) {
+                    errors.push(`Just minor third E-G error: ${minorThirdRatio.toFixed(6)} (expected ${(6/5).toFixed(6)})`);
+                }
+            }
+            
+            if (tuningName === 'Pythagorean') {
+                // All fifths except wolf should be pure 3:2
+                const fifthPairs = [[0,7], [7,2], [2,9], [9,4], [4,11], [11,6], [6,1]]; // C-G, G-D, D-A, etc.
+                fifthPairs.forEach(([n1, n2]) => {
+                    const ratio = getRatio(n1, n2);
+                    if (Math.abs(ratio - 3/2) > 0.001) {
+                        errors.push(`Pythagorean fifth ${notes[n1]}-${notes[n2]} error: ${ratio.toFixed(6)} (expected 1.500000)`);
+                    }
+                });
+            }
+            
+            if (tuningName === 'Quarter-Comma Meantone') {
+                // Major thirds should be pure 5:4
+                const majorThirds = [[0,4], [7,11], [2,6], [5,9]]; // C-E, G-B, D-F#, F-A
+                majorThirds.forEach(([n1, n2]) => {
+                    const ratio = getRatio(n1, n2);
+                    const cents = getCents(ratio);
+                    // Pure major third is 386.3 cents
+                    if (Math.abs(cents - 386.3) > 1) {
+                        errors.push(`Meantone major third ${notes[n1]}-${notes[n2]}: ${cents.toFixed(1)}¢ (expected ~386¢)`);
+                    }
+                });
+                
+                // Wolf fifth G#-Eb should be ~738 cents (wider than pure)
+                const wolfRatio = getRatio(8, 15); // G# to Eb next octave
+                const wolfCents = getCents(wolfRatio);
+                if (Math.abs(wolfCents - 737.6) > 5) {
+                    errors.push(`Meantone wolf fifth G#-Eb: ${wolfCents.toFixed(1)}¢ (expected ~738¢)`);
+                }
+            }
+            
+            // Log validation results
+            if (errors.length > 0) {
+                console.warn(`⚠️ Tuning validation errors for ${tuningName}:`, errors);
+            } else {
+                console.log(`✅ Tuning validation passed for ${tuningName}`);
+            }
+        }
+
+        function getFrequency(noteIndex) {
+            // Use cached frequency from map
+            if (frequencyMap.has(noteIndex)) {
+                return frequencyMap.get(noteIndex);
+            }
+            
+            // Fallback: calculate on the fly for notes outside cached range
+            const tuning = getCurrentTuning();
             const octaves = Math.floor(noteIndex / 12);
-            const noteInOctave = ((noteIndex % 12) + 12) % 12; // Handle negative indices
-            
-            return baseC * tuning.ratios[noteInOctave] * Math.pow(2, octaves);
+            const noteInOctave = ((noteIndex % 12) + 12) % 12;
+            return BASE_C4 * tuning.ratios[noteInOctave] * Math.pow(2, octaves);
         }
 
         function createInstrumentOscillator(freq) {
@@ -831,8 +965,15 @@
             if (keyElement) keyElement.classList.remove('active');
         }
 
-        function playInterval(note1Index, note2Index) {
+        function playInterval(note1Index, note2Index, forceTuning = null) {
             initAudioContext();
+            
+            // Temporarily switch tuning if specified
+            const tuningSelect = document.getElementById('tuning');
+            const originalTuning = tuningSelect.value;
+            if (forceTuning) {
+                tuningSelect.value = forceTuning;
+            }
             
             const freq1 = getFrequency(note1Index);
             const freq2 = getFrequency(note2Index);
@@ -858,6 +999,12 @@
                 currentFrequencies.delete(note1Index);
                 currentFrequencies.delete(note2Index);
                 updateFrequencyDisplay();
+                
+                // Restore original tuning if it was changed
+                if (forceTuning && originalTuning !== forceTuning) {
+                    tuningSelect.value = originalTuning;
+                    updateFrequencyTable();
+                }
             }, 2000);
             
             // Visual feedback on keyboard
@@ -871,6 +1018,9 @@
         }
 
         function updateFrequencyTable() {
+            // Rebuild frequency map when tuning changes
+            buildFrequencyMap();
+            
             const tuning = getCurrentTuning();
             let html = '<table><tr><th>Note</th><th>Ratio</th><th>Frequency (Hz)</th><th>Cents</th></tr>';
             

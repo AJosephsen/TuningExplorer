@@ -646,49 +646,45 @@
                 melodyTime += step.duration;
             });
             
-            // Play bass line (one octave down in frequency)
+            // Play bass line (two octaves down for distinct bass)
             twinkleBass.forEach((step, i) => {
                 const timeout = setTimeout(() => {
                     if (!currentMelody) return; // Melody was stopped
                     
                     const transposedNote = startNoteIndex + step.note;
-                    const freq = getFrequency(transposedNote) / 2; // One octave down
+                    const freq = getFrequency(transposedNote) / 4; // Two octaves down for deeper bass
                     
-                    const { oscillators, gains, inst } = createInstrumentOscillator(freq);
+                    // Create simple sine wave bass for clarity
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.type = 'sine'; // Pure sine for bass
+                    osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+                    
                     const now = audioContext.currentTime;
+                    oscillatorRefs.push({ oscillators: [osc], gains: [gain] });
                     
-                    oscillatorRefs.push({ oscillators, gains });
+                    // Envelope: quick attack, sustain for most of duration, then quick release
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(0.4, now + 0.02); // Quick attack, louder bass
+                    gain.gain.setValueAtTime(0.4, now + step.duration - 0.05); // Hold volume
                     
-                    oscillators.forEach(osc => {
-                        gains.forEach(gain => {
-                            gain.gain.setValueAtTime(gain.gain.value * 0.5, now); // Quieter bass
-                            gain.connect(analyser);
-                        });
-                        osc.start();
-                    });
+                    gain.connect(analyser);
+                    osc.connect(gain);
+                    osc.start();
                     
-                    // Stop bass note after duration
+                    // Stop bass note with quick release
                     const stopTimeout = setTimeout(() => {
                         if (!currentMelody) return; // Melody was stopped
                         
                         const stopTime = audioContext.currentTime;
-                        const releaseTime = inst.release || 0.1;
-                        gains.forEach(gain => {
-                            try {
-                                gain.gain.cancelScheduledValues(stopTime);
-                                gain.gain.setValueAtTime(gain.gain.value, stopTime);
-                                gain.gain.exponentialRampToValueAtTime(0.01, stopTime + releaseTime);
-                            } catch (e) {
-                                // Ignore if already stopped
-                            }
-                        });
-                        oscillators.forEach(osc => {
-                            try {
-                                osc.stop(stopTime + releaseTime);
-                            } catch (e) {
-                                // Ignore if already stopped
-                            }
-                        });
+                        try {
+                            gain.gain.cancelScheduledValues(stopTime);
+                            gain.gain.setValueAtTime(gain.gain.value, stopTime);
+                            gain.gain.exponentialRampToValueAtTime(0.01, stopTime + 0.05);
+                            osc.stop(stopTime + 0.05);
+                        } catch (e) {
+                            // Ignore if already stopped
+                        }
                     }, step.duration * 1000);
                     
                     timeouts.push(stopTimeout);
